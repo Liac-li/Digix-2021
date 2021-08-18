@@ -34,6 +34,7 @@ class TrainData(object):
         :return: DataFrame for all query both in English and Turkish
         """
         data = pd.read_csv(file_path).iloc[:, 1:]
+        data = data[data.link_index != '(-1, -1)'].reset_index(drop = True)
         return data
 
     def get_sample(self, queries, query, ranking, sampled_queries, qids):
@@ -86,14 +87,22 @@ class TrainData(object):
         sampled_content = []
         qids = random.sample(set(queries.qid), n_tasks)
         sampled_queries = [queries[(queries.qid == qid) & (
-            queries.ranking == 0)].reset_index().at[0, 'query'] for qid in qids]
+            queries.ranking == 0)].reset_index(drop = True).at[0, 'query'] for qid in qids]
 
         for query in sampled_queries:
             # positive sample
-            pos_sample = self.get_sample(queries, query, 0, sampled_queries, qids)
+            for i in range(100):
+                if not queries[(queries.loc[:,"query"] == query) & (queries.ranking == i)].empty:
+                    pos_sample = self.get_sample(queries, query, i, sampled_queries, qids)
+                    break
+            
             # negative sample
-            neg_sample = self.get_sample(queries, query, 10, sampled_queries, qids)
-
+            while True:
+                neg_ranking = random.choice(list(range(1, 100)))
+                if not queries[(queries.loc[:,"query"] == query) & (queries.ranking == neg_ranking)].empty:
+                    neg_sample = self.get_sample(queries, query, neg_ranking, sampled_queries, qids)
+                    break
+        
             sampled_content.append([pos_sample, neg_sample])
         assert len(sampled_queries) == len(sampled_content)
         return sampled_queries, sampled_content    
@@ -104,6 +113,7 @@ class TrainData(object):
         :param texts: 输入格式：[], 如果is_sim为True，则格式：[[]]
         :return:
         """
+        
         tokenizer = tokenization.FullTokenizer(
             vocab_file=self.__vocab_path, do_lower_case=True)
         input_ids = []
@@ -114,11 +124,11 @@ class TrainData(object):
             text = tokenization.convert_to_unicode(text)
             tokens = tokenizer.tokenize(text)
             tokens = ["[CLS]"] + tokens + ["[SEP]"]
-            print(tokens)
             input_id = tokenizer.convert_tokens_to_ids(tokens)
             input_ids.append(input_id)
             input_masks.append([1] * len(input_id))
             segment_ids.append([0] * len(input_id))
+        
         return input_ids, input_masks, segment_ids
 
     def padding(self, input_ids, input_masks, segment_ids):
