@@ -11,8 +11,6 @@ import sys
 sys.path.append(os.path.dirname(os.getcwd()))
 
 
-
-
 class TrainData(object):
     def __init__(self, config):
 
@@ -36,6 +34,8 @@ class TrainData(object):
         data = pd.read_csv(file_path).iloc[:, 1:]
         return data
 
+
+    # adding
     def get_sample(self, queries, query, ranking, sampled_queries, qids):
         link_index = queries[(queries.loc[:, 'query'] == query) & (
             queries.ranking == ranking)].reset_index().at[0, 'link_index'][1:-1]
@@ -83,6 +83,7 @@ class TrainData(object):
         return new_queries, new_sims
         '''
 
+        # adding
         sampled_content = []
         qids = random.sample(set(queries.qid), n_tasks)
         sampled_queries = [queries[(queries.qid == qid) & (
@@ -90,13 +91,15 @@ class TrainData(object):
 
         for query in sampled_queries:
             # positive sample
-            pos_sample = self.get_sample(queries, query, 0, sampled_queries, qids)
+            pos_sample = self.get_sample(
+                queries, query, 0, sampled_queries, qids)
             # negative sample
-            neg_sample = self.get_sample(queries, query, 10, sampled_queries, qids)
+            neg_sample = self.get_sample(
+                queries, query, 10, sampled_queries, qids)
 
             sampled_content.append([pos_sample, neg_sample])
         assert len(sampled_queries) == len(sampled_content)
-        return sampled_queries, sampled_content    
+        return sampled_queries, sampled_content
 
     def trans_to_index(self, texts):
         """
