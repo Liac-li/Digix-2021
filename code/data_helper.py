@@ -54,7 +54,7 @@ class TrainData(object):
 
         title = line.split('\x01')[1] * 20  # title has greater weight
         content = line.split('\x01')[2]
-        link = line.split('x01')[0]
+        link = line.split('\x01')[0]
         sample = title + content + link
         return sample
 
@@ -104,9 +104,6 @@ class TrainData(object):
         :param texts: 输入格式：[], 如果is_sim为True，则格式：[[]]
         :return:
         """
-        print("text")
-        print(texts)
-        print('\n')
         tokenizer = tokenization.FullTokenizer(
             vocab_file=self.__vocab_path, do_lower_case=True)
         input_ids = []
@@ -122,12 +119,6 @@ class TrainData(object):
             input_ids.append(input_id)
             input_masks.append([1] * len(input_id))
             segment_ids.append([0] * len(input_id))
-        print("input_id\n")
-        print(input_id)
-        print("input_masks\n")
-        print(input_masks)
-        print('segment_ids\n')
-        print(segment_ids)
         return input_ids, input_masks, segment_ids
 
     def padding(self, input_ids, input_masks, segment_ids):
