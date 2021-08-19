@@ -5,8 +5,10 @@ import sys
 import copy
 import json
 import random
+import math
 from itertools import chain
 import pandas as pd
+import numpy as np
 import re
 from TurkishStemmer import TurkishStemmer
 
@@ -44,6 +46,7 @@ class TrainData(object):
         :return: DataFrame for all query both in English and Turkish
         """
         data = pd.read_csv(file_path).iloc[:, 1:]
+        data = data[data.link_index != '(-1, -1)'].reset_index(drop = True)
         return data
 
 
@@ -160,7 +163,9 @@ class TrainData(object):
 
 
         for i in range(n_tasks):
-            pos_q = queries[(queries['qid'] == qids[i]) & (queries['ranking'] == 0)]
+            for rank in range(100): 
+                if not queries[(queries['qid'] == qids[i]) & (queries['ranking'] == rank)].empty:
+                    pos_q = queries[(queries['qid'] == qids[i]) & (queries['ranking'] == rank)] 
             neg_sim = random.sample(cor_qids, self.__num_samples - 1)
             neg_q = queries[queries['qid'].isin(neg_sim)].sample(n=self.__num_samples-1)
 
@@ -172,67 +177,92 @@ class TrainData(object):
             new_sims.append(tmp)
         return new_queries, new_sims
 
-def train_test_split(*arrays, test_size=0.33, eval_size=None, shuffle=True, group_size=1):
-	# '''
-	# Splite the iterable data on index shape[0]
-	# Args:
-	# @param *arrays: pandans DataFrame or numpy array
-	# @param test_size: test data set size, float
-	# @param shuffle: use shuffle or not
-	# @param group_size: mulitple lines as a group (DIGIX-predict be top100)
-	# Return:
-	# (arrays[i]_train, arrays[i]_test, ...)
-	# '''
+    @staticmethod
+    def train_test_split(*arrays, df_col_name=None, test_size=0.33, eval_size=None, shuffle=True, group_size=1):
+        """
+            Split data to train, eval, test set
+            Args:
+            @param test_size: float, 
+            @param eval_size: default same as test_size
+            @param shuffle: determine whether to shuffle
+            @group_size: 
+            return:
+            array[i]-train, array[i]-eval, array[i]-test
+        """
+        print("=="*20, "\nBegin split train and test data")
 
-    result = []
-    if eval_size is None:
-        eval_size = test_size
-
-    for array in arrays:
-        idx = [(i, i+group_size) for i in range(0, len(array), group_size)]
-        if shuffle:
-            random.shuffle(idx)
-        splite_idx = math.floor(len(idx) * test_size)
-        # for eval set
-        train_idx = idx[splite_idx:]
-        eval_idx = random.sample(train_idx, math.floor(len(train_idx)*eval_size))
-        eval_num = math.ceil(group_size * eval_size)
-
-        if isinstance(array, pd.DataFrame):
-            train_set = pd.DataFrame()
-            test_set = pd.DataFrame()
-            eval_set = pd.DataFrame()
-
-            for idx_range in idx[:splite_idx]:
-                test_set = test_set.append(
-                    array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
-            for idx_range in idx[splite_idx:]:  # train
-                train_set = train_set.append(
-                    array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
-            for idx_range in eval_idx:
-                eval_set = eval_set.append(
-                    array.iloc[idx_range[0]:idx_range[1], :].sample(n=eval_num), ignore_index=True)
-
-        # TODO: append method of numpy array
-        if isinstance(array, np.ndarray):
-            train_set, test_set, eval_set = [], [], []
-            for idx_range in idx[:splite_idx]:
-                test_set.append(array[idx_range[0]:idx_range[1], ])
-                
-            for idx_range in idx[splite_idx:]:
-                train_set.append(array[idx_range[0]: idx_range[1], ])
-            for idx_range in eval_idx:
-                train_set.append(array[idx_range[0]: idx_range[1], ])
-              
-           # get eval_set
+        def get_idx(df, target_col):
+            res = []
+            last_point = 0
+            last_key_value = None
+            for index, row in df.iterrows():
+                if last_key_value is None:
+                    last_key_value = row[target_col]
+                elif last_key_value != row[target_col]:
+                    res.append((last_point, index))
+                    last_point = index
+                    last_key_value = row[target_col]
+                if index % (len(df) // 20) == 0:
+                    print("Get index {}/{}".format(index, len(df)))
+            return res
+        
+        result = []
+        if eval_size is None:
+            eval_size = test_size
+    
+        for array in arrays:
+            if isinstance(array, pd.DataFrame):
+                idx = get_idx(array, df_col_name)
+            else:
+                idx = [(i, i+group_size) for i in range(0, len(array), group_size)]
+            if shuffle:
+                random.shuffle(idx)
+            splite_idx = math.floor(len(idx) * test_size)
+            # for eval set
+            train_idx = idx[splite_idx:]
+            eval_idx = random.sample(train_idx, math.floor(len(train_idx)*eval_size))
+            eval_num = math.ceil(group_size * eval_size)
+            print("Finish initializing")
+            if isinstance(array, pd.DataFrame):
+                train_set = pd.DataFrame()
+                test_set = pd.DataFrame()
+                eval_set = pd.DataFrame()
+    
+                for idx_range in idx[:splite_idx]:
+                    test_set = test_set.append(
+                        array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
+                print("[train&test] Finish test set")
+                for idx_range in idx[splite_idx:]:  # train
+                    train_set = train_set.append(
+                        array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
+                print("[train&test] Finish train set")
+                for idx_range in eval_idx:
+                    eval_set = eval_set.append(
+                        array.iloc[idx_range[0]:idx_range[1], :].sample(n=eval_num), ignore_index=True)
+                print("[train&test] Finish eval set")
+    
+            # TODO: append method of numpy array
+            if isinstance(array, np.ndarray):
+                train_set, test_set, eval_set = [], [], []
+                for idx_range in idx[:splite_idx]:
+                    test_set.append(array[idx_range[0]:idx_range[1], ])
+                print("[train&test] Finish test set")
+                for idx_range in idx[splite_idx:]:
+                    train_set.append(array[idx_range[0]: idx_range[1], ])
+                print("[train&test] Finish train set")
+                for idx_range in eval_idx:
+                    train_set.append(array[idx_range[0]: idx_range[1], ])
+                print("[train&test] Finish eval set")
+ 
+               # get eval_set
            
 
 
-    result.append(train_set)
-    result.append(eval_set)
-    result.append(test_set)
+        result.append(train_set)
+        result.append(eval_set)
+        result.append(test_set)
 
-    return tuple(result)
+        return tuple(result)
 
 
 
