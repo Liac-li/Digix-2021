@@ -1,19 +1,21 @@
 # -*- coding: UTF-8 -*-
 from bert import tokenization
 import os
+import sys
 import copy
 import json
 import random
 from itertools import chain
 import pandas as pd
-import sys
+import re
+from TurkishStemmer import TurkishStemmer
 
 sys.path.append(os.path.dirname(os.getcwd()))
 
+turkStem = TurkishStemmer()
 
 class TrainData(object):
     def __init__(self, config):
-
         self.__vocab_path = os.path.join(
             config["bert_model_path"], "vocab.txt")
         self.__output_path = config["output_path"]
@@ -24,7 +26,17 @@ class TrainData(object):
 
         self.__num_samples = config["num_samples"]
 
-        self.count = 0
+        self.count = 0 # sample num
+
+        self.en_train_data_path = os.path.join(config['data_path'], 'train/train_en.tsv')
+        self.tr_train_data_path = os.path.join(config['data_path'], 'train/train_tr.tsv')
+
+        self.predict_path = os.path.join(config['data_path'], 'to_predict.csv')
+        self.en_doc_info_path = os.path.join(config['data_path'], 'doc_info/en_list_result/')
+        self.tr_doc_info_path = os.path.join(config['data_path'], 'doc_info/tr_list_result/')
+
+        self.part_range = 30000  # num of file num in doc_info 'part-xxxx'
+
 
     @staticmethod
     def load_data(file_path):
@@ -35,71 +47,194 @@ class TrainData(object):
         return data
 
 
-    # adding
-    def get_sample(self, queries, query, ranking, sampled_queries, qids):
-        link_index = queries[(queries.loc[:, 'query'] == query) & (
-            queries.ranking == ranking)].reset_index().at[0, 'link_index'][1:-1]
-        qid = qids[sampled_queries.index(query)]
-        part = link_index.split(',')[0]
-        row = int(link_index.split(',')[1])
-        if qid[0:2] == 'en':
-            with open('data/en_list_result/part-%s' % part.zfill(5), 'r') as fp:
-                line = fp.readlines()[row]
-        elif qid[0:2] == 'tr':
-            with open('data/tr_list_result/part-%s' % part.zfill(5), 'r') as fp:
-                line = fp.readlines()[row]
-        else:
-            print("the name of qid Error\n")
-            line = "Error"
+    def sentence_process(self, sentence):
+        replacement_pool = [
+            ['<br>', ' '],
+            ['"', ' '],
+            ['\'', ' '],
+            ['.', ' '],
+            [',', ' '],
+            ['?', ' '],
+            ['!', ' '],
+            ['[', ' '],
+            [']', ' '],
+            ['(', ' '],
+            [')', ' '],
+            ['{', ' '],
+            ['}', ' '],
+            ['<', ' '],
+            ['>', ' '],
+            [':', ' '],
+            ['\\', ' '],
+            ['`', ' '],
+            ['=', ' '],
+            ['$', ' '],
+            ['/', ' '],
+            ['*', ' '],
+            [';', ' '],
+            ['-', ' '],
+            ['^', ' '],
+            ['|', ' '],
+            ['%', ' '],
+            ['\/', ' '],
+        ]
+        sentence = sentence.lower()
+        for rule in replacement_pool:
+            sentence = sentence.replace(rule[0], rule[1])
+        tokens = sentence.split()
+        return tokens
 
-        title = line.split('\x01')[1] * 20  # title has greater weight
-        content = line.split('\x01')[2]
-        link = line.split('\x01')[0]
-        sample = title + content + link
-        return sample
+
+    def getWordsFromURL(self, url, lang):
+        words_list = re.compile(r'[\:/?=\-&.,_@%!$0123456789()&*+\[\]]+',re.UNICODE).split(url)
+        drop_words = set(['', 'http', 'https', 'www', 'com', '\t', 'm', 'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'n',
+                      'o', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'y', 'z'])
+
+        return [turkStem.stem(word.lower()) for word in words_list if word.lower() not in drop_words]
+
+
+    def get_tokens(self, series):
+        """
+            Args:
+                @param series: pandas.core.series.Series with lind_index(part_num, line_num)
+        """
+        link_index = eval(series['link_index'])
+        lang = series['qid'][:2]
+        if lang == 'en':
+            with open(self.en_doc_info_path+'part-%05d'%link_index[0], 'r', encoding='utf8') as fr:
+                line = fr.readlines()[link_index[1]]
+        elif lang == 'tr':
+            with open(self.tr_doc_info_path+'part-%05d'%link_index[0], 'r', encoding='utf8') as fr:
+                line = fr.readlines()[link_index[1]]
+        else:
+            raise NameError('Language type not match')
+        
+        parts = line.split('\x01')[:3] # ! set as url-title-rank, may need to change
+        if len(parts) == 1:
+            title_with_content = ''
+        elif len(parts) == 2:
+            title_with_content = parts[1]
+        else:
+            title_with_content = (parts[1] + ' ') * 20 + '.' + parts[2]
+        # print(len(title_with_content), type(title_with_content))
+        res = self.sentence_process(title_with_content) + 20 * self.getWordsFromURL(parts[0], lang)
+        return res
+
+
 
     def neg_samples(self, queries, n_tasks):
         """
         随机负采样多个样本
-        :param queries: all of the queries data
-        :param n_tasks: set manualy 
-        :return: [], [[]]
+		Args:
+        	@param queries: (pd.DataFrame) all of the queries data
+        	@param n_tasks: set manually 
+
+        return: [], [[]]
         """
-        '''
+        
+        # adding
+        # sampled_content = []
+        # qids = random.sample(set(queries.qid), n_tasks)
+        # sampled_queries = [queries[(queries.qid == qid) & (
+        #     queries.ranking == 0)].reset_index().at[0, 'query'] for qid in qids]
+
+        # for query in sampled_queries:
+        #     # positive sample
+        #     pos_sample = self.get_sample(
+        #         queries, query, 0, sampled_queries, qids)
+        #     # negative sample
+
+        #     if self.__num_sample > 1:
+        #     neg_sample = self.get_sample(
+        #         queries, query, 10, sampled_queries, qids)
+
+        #     sampled_content.append([pos_sample, neg_sample])
+        # assert len(sampled_queries) == len(sampled_content)
+        # return sampled_queries, sampled_content
+        
         new_queries = []
         new_sims = []
 
-        for i in range(n_tasks):
-            questions = random.choice(queries)
-            copy_questions = copy.copy(queries)
-            copy_questions.remove(questions)
-            pos_samples = random.sample(questions, 2)
-
-            copy_questions = list(chain(*copy_questions))
-            neg_sims = random.sample(copy_questions, self.__num_samples - 1)
-            new_queries.append(pos_samples[0])
-            new_sims.append([pos_samples[1]] + neg_sims)
-    
-        return new_queries, new_sims
-        '''
-
-        # adding
-        sampled_content = []
         qids = random.sample(set(queries.qid), n_tasks)
-        sampled_queries = [queries[(queries.qid == qid) & (
-            queries.ranking == 0)].reset_index().at[0, 'query'] for qid in qids]
+        cor_qids = list(set(queries.qid) - set(qids))
 
-        for query in sampled_queries:
-            # positive sample
-            pos_sample = self.get_sample(
-                queries, query, 0, sampled_queries, qids)
-            # negative sample
-            neg_sample = self.get_sample(
-                queries, query, 10, sampled_queries, qids)
 
-            sampled_content.append([pos_sample, neg_sample])
-        assert len(sampled_queries) == len(sampled_content)
-        return sampled_queries, sampled_content
+        for i in range(n_tasks):
+            pos_q = queries[(queries['qid'] == qids[i]) & (queries['ranking'] == 0)]
+            neg_sim = random.sample(cor_qids, self.__num_samples - 1)
+            neg_q = queries[queries['qid'].isin(neg_sim)].sample(n=self.__num_samples-1)
+
+            tmp = []
+            for index, item in pos_q.append(neg_q).iterrows():
+                tmp.append(self.get_tokens(item))
+
+            new_queries.append(pos_q['query'])
+            new_sims.append(tmp)
+        return new_queries, new_sims
+
+def train_test_split(*arrays, test_size=0.33, eval_size=None, shuffle=True, group_size=1):
+	# '''
+	# Splite the iterable data on index shape[0]
+	# Args:
+	# @param *arrays: pandans DataFrame or numpy array
+	# @param test_size: test data set size, float
+	# @param shuffle: use shuffle or not
+	# @param group_size: mulitple lines as a group (DIGIX-predict be top100)
+	# Return:
+	# (arrays[i]_train, arrays[i]_test, ...)
+	# '''
+
+    result = []
+    if eval_size is None:
+        eval_size = test_size
+
+    for array in arrays:
+        idx = [(i, i+group_size) for i in range(0, len(array), group_size)]
+        if shuffle:
+            random.shuffle(idx)
+        splite_idx = math.floor(len(idx) * test_size)
+        # for eval set
+        train_idx = idx[splite_idx:]
+        eval_idx = random.sample(train_idx, math.floor(len(train_idx)*eval_size))
+        eval_num = math.ceil(group_size * eval_size)
+
+        if isinstance(array, pd.DataFrame):
+            train_set = pd.DataFrame()
+            test_set = pd.DataFrame()
+            eval_set = pd.DataFrame()
+
+            for idx_range in idx[:splite_idx]:
+                test_set = test_set.append(
+                    array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
+            for idx_range in idx[splite_idx:]:  # train
+                train_set = train_set.append(
+                    array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
+            for idx_range in eval_idx:
+                eval_set = eval_set.append(
+                    array.iloc[idx_range[0]:idx_range[1], :].sample(n=eval_num), ignore_index=True)
+
+        # TODO: append method of numpy array
+        if isinstance(array, np.ndarray):
+            train_set, test_set, eval_set = [], [], []
+            for idx_range in idx[:splite_idx]:
+                test_set.append(array[idx_range[0]:idx_range[1], ])
+                
+            for idx_range in idx[splite_idx:]:
+                train_set.append(array[idx_range[0]: idx_range[1], ])
+            for idx_range in eval_idx:
+                train_set.append(array[idx_range[0]: idx_range[1], ])
+              
+           # get eval_set
+           
+
+
+    result.append(train_set)
+    result.append(eval_set)
+    result.append(test_set)
+
+    return tuple(result)
+
+
 
     def trans_to_index(self, texts):
         """
@@ -114,15 +249,23 @@ class TrainData(object):
         segment_ids = []
 
         for text in texts:
+            if isinstance(text, pd.Series):
+                tmp = [x for index, x in text.items()]
+                text = ''.join(tmp)
+            if isinstance(text, list):
+                text = ''.join(text)
+            if not isinstance(text, str):
+                print(text, type(text))
             text = tokenization.convert_to_unicode(text)
             tokens = tokenizer.tokenize(text)
             tokens = ["[CLS]"] + tokens + ["[SEP]"]
-            print(tokens)
+            # print(tokens)
             input_id = tokenizer.convert_tokens_to_ids(tokens)
             input_ids.append(input_id)
             input_masks.append([1] * len(input_id))
             segment_ids.append([0] * len(input_id))
         return input_ids, input_masks, segment_ids
+
 
     def padding(self, input_ids, input_masks, segment_ids):
         """
@@ -148,6 +291,7 @@ class TrainData(object):
 
         return pad_input_ids, pad_input_masks, pad_segment_ids
 
+
     def gen_data(self, file_path):
         """
         生成数据
@@ -160,6 +304,7 @@ class TrainData(object):
         print("read finished")
 
         return queries
+
 
     def gen_task_samples(self, queries, n_tasks):
         """
@@ -190,6 +335,7 @@ class TrainData(object):
             segment_ids_b.append(segment_id_b)
 
         return input_ids_a, input_masks_a, segment_ids_a, input_ids_b, input_masks_b, segment_ids_b
+
 
     def next_batch(self, input_ids_a, input_masks_a, segment_ids_a, input_ids_b, input_masks_b, segment_ids_b):
         """

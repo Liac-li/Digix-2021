@@ -1,15 +1,18 @@
 # -*- coding: UTF-8 -*-
 from bert import tokenization
 import os
+import sys
 import copy
 import json
 import random
 from itertools import chain
 import pandas as pd
-import sys
+import re
+from TurkishStemmer import TurkishStemmer
 
 sys.path.append(os.path.dirname(os.getcwd()))
 
+turkStem = TurkishStemmer()
 
 class TrainData(object):
     def __init__(self, config):
@@ -42,41 +45,6 @@ class TrainData(object):
         return data
 
 
-    # adding
-    # def get_sample(self, queries, query, ranking, sampled_queries, qids):
-    #     """
-    #     	Get context base on (qid, query, ranking) and return as list
-	# 		Args:
-	# 			@param queries: dataFrame stored predict_data
-	# 			@param query: query part of target context
-	# 			@param ranking: ranking in query group
-	# 			@param sampled_queries: 
-	# 			@param pids: pid corresponding the sampled_queries
-
-	# 		Return:
-	# 			Sampled line's token list
-    #     """
-
-    #     link_index = queries[(queries.loc[:, 'query'] == query) & (
-    #         queries.ranking == ranking)].reset_index().at[0, 'link_index'][1:-1]
-    #     qid = qids[sampled_queries.index(query)]
-    #     part = int(link_index.split(',')[0])
-    #     row = int(link_index.split(',')[1])
-    #     if qid[0:2] == 'en':
-    #         with open('data/en_list_result/part-%05d' % part, 'r') as fp:
-    #             line = fp.readlines()[row]
-    #     elif qid[0:2] == 'tr':
-    #         with open('data/tr_list_result/part-%05d' % part, 'r') as fp:
-    #             line = fp.readlines()[row]
-    #     else:
-    #         print("the name of qid Error\n")
-    #         line = "Error"
-
-    #     title = line.split('\x01')[1] * 20  # title has greater weight
-    #     content = line.split('\x01')[2]
-    #     link = line.split('\x01')[0]
-    #     sample = title + content + link
-    #     return sample
     def sentence_processing(sentence):
         replacement_pool = [
             ['<br>', ' '],
@@ -132,24 +100,24 @@ class TrainData(object):
         lang = series['qid'][:2]
         if lang == 'en':
             with open(self.en_doc_info_path+'part-%05d'%link_index[0], 'r', encoding='utf8') as fr:
-                lines = fr.readlines()
+                line = fr.readlines()[link_index[1]]
         elif lang == 'tr':
             with open(self.tr_doc_info_path+'part-%05d'%link_index[0], 'r', encoding='utf8') as fr:
-                lines = fr.readlines()
+                line = fr.readlines()[link_index[1]]
         else:
             raise NameError('Language type not match')
         
-        parts = lines.split('\x01')[:3] # ! set as url-title-rank, may need to change
+        parts = line.split('\x01')[:3] # ! set as url-title-rank, may need to change
         if len(parts) == 1:
             title_with_content = ''
         elif len(parts) == 2:
             title_with_content = parts[1]
         else:
             title_with_content = (parts[1] + ' ') * 20 + '.' + parts[2]
-        res = self.sentence_process(title_with_content) + 20 * getWordsFromURL(parts[0])
+        res = self.sentence_process(title_with_content) + 20 * self.getWordsFromURL(parts[0], lang)
         return res
 
-        
+
 
     def neg_samples(self, queries, n_tasks):
         """
@@ -217,8 +185,11 @@ class TrainData(object):
         segment_ids = []
 
         for text in texts:
-            text = tokenization.convert_to_unicode(text)
-            tokens = tokenizer.tokenize(text)
+            if isinstance(text, list):
+                tokens = text
+            else:
+                text = tokenization.convert_to_unicode(text)
+                tokens = tokenizer.tokenize(text)
             tokens = ["[CLS]"] + tokens + ["[SEP]"]
             print(tokens)
             input_id = tokenizer.convert_tokens_to_ids(tokens)
