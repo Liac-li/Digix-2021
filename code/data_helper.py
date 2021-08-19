@@ -86,19 +86,20 @@ class TrainData(object):
 
         sampled_content = []
         qids = random.sample(set(queries.qid), n_tasks)
-        sampled_queries = [queries[(queries.qid == qid) & (
-            queries.ranking == 0)].reset_index(drop = True).at[0, 'query'] for qid in qids]
-
+        sampled_queries = [queries[queries.qid == qid].reset_index(drop = True).at[0, 'query'] for qid in qids] 
+        
         for query in sampled_queries:
             # positive sample
+            pos_ranking = 0
             for i in range(100):
                 if not queries[(queries.loc[:,"query"] == query) & (queries.ranking == i)].empty:
-                    pos_sample = self.get_sample(queries, query, i, sampled_queries, qids)
+                    pos_ranking = i 
+                    pos_sample = self.get_sample(queries, query, pos_ranking, sampled_queries, qids)
                     break
             
             # negative sample
             while True:
-                neg_ranking = random.choice(list(range(1, 100)))
+                neg_ranking = random.choice(list(range(pos_ranking+1, 100)))
                 if not queries[(queries.loc[:,"query"] == query) & (queries.ranking == neg_ranking)].empty:
                     neg_sample = self.get_sample(queries, query, neg_ranking, sampled_queries, qids)
                     break
