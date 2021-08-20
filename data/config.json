@@ -7,12 +7,14 @@
   "sequence_length": 32,
   "batch_size": 8,
   "num_samples": 2,
-  "train_n_tasks": 10,
+  "train_n_tasks": 8,
   "eval_n_tasks": 500,
   "margin": 0.5,
   "warmup_rate": 0.1,
   "output_path": "output",
   "bert_model_path": "../bert_model/multilingual_L-12_H-768_A-12",
   "data": "data/train_withIndex.csv",
+  "train_data": "data/Splited_data/train.csv",
+  "eval_data": "data/Splited_data/test.csv",
   "ckpt_model_path": "ckpt_model/"
 }

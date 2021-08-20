@@ -7,10 +7,11 @@ import random
 from itertools import chain
 import pandas as pd
 import sys
-
+import re
+from TurkishStemmer import TurkishStemmer
 sys.path.append(os.path.dirname(os.getcwd()))
 
-
+turkStem = TurkishStemmer()
 
 
 class TrainData(object):
@@ -29,13 +30,57 @@ class TrainData(object):
         self.count = 0
 
     @staticmethod
-    def load_data(file_path):
+    def load_data(train_file, eval_file):
         """
         :return: DataFrame for all query both in English and Turkish
+                 train DataFrame
+                 eval DataFrame
         """
-        data = pd.read_csv(file_path).iloc[:, 1:]
-        data = data[data.link_index != '(-1, -1)'].reset_index(drop = True)
-        return data
+        
+        train_data = pd.read_csv(train_file)
+        train_data = train_data[train_data.link_index != '(-1, -1)'].reset_index(drop = True)
+
+        eval_data = pd.read_csv(eval_file)
+        eval_data = eval_data[eval_data.link_index != '(-1, -1)'].reset_index(drop = True)
+
+        return train_data, eval_data
+
+    def sentence_process(self, sentence):
+        replacement_pool = [
+            ['<br>', ' '],
+            ['"', ' '],
+            ['\'', ' '],
+            ['.', ' '],
+            [',', ' '],
+            ['?', ' '],
+            ['!', ' '],
+            ['[', ' '],
+            [']', ' '],
+            ['(', ' '],
+            [')', ' '],
+            ['{', ' '],
+            ['}', ' '],
+            ['<', ' '],
+            ['>', ' '],
+            [':', ' '],
+            ['\\', ' '],
+            ['`', ' '],
+            ['=', ' '],
+            ['$', ' '],
+            ['/', ' '],
+            ['*', ' '],
+            [';', ' '],
+            ['-', ' '],
+            ['^', ' '],
+            ['|', ' '],
+            ['%', ' '],
+            ['\/', ' '],
+        ]
+        sentence = sentence.lower()
+        for rule in replacement_pool:
+            sentence = sentence.replace(rule[0], rule[1])
+        
+        return sentence    
 
     def get_sample(self, queries, query, ranking, sampled_queries, qids):
         link_index = queries[(queries.loc[:, 'query'] == query) & (
@@ -43,10 +88,12 @@ class TrainData(object):
         qid = qids[sampled_queries.index(query)]
         part = link_index.split(',')[0]
         row = int(link_index.split(',')[1])
-        if qid[0:2] == 'en':
+        lang = qid[0:2]
+        
+        if lang == 'en':
             with open('data/en_list_result/part-%s' % part.zfill(5), 'r') as fp:
                 line = fp.readlines()[row]
-        elif qid[0:2] == 'tr':
+        elif lang == 'tr':
             with open('data/tr_list_result/part-%s' % part.zfill(5), 'r') as fp:
                 line = fp.readlines()[row]
         else:
@@ -56,8 +103,18 @@ class TrainData(object):
         title = line.split('\x01')[1] * 20  # title has greater weight
         content = line.split('\x01')[2]
         link = line.split('\x01')[0]
-        sample = title + content + link
+        sample = self.sentence_process(title + content) + self.getWordsFromURL(link)
+
         return sample
+
+    def getWordsFromURL(self, url):
+        words_list = re.compile(r'[\:/?=\-&.,_@%!$0123456789()&*+\[\]]+',re.UNICODE).split(url)
+        drop_words = set(['', 'http', 'https', 'www', 'com', '\t', 'm', 'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'n',
+                      'o', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'y', 'z'])
+        url_words = [turkStem.stem(word.lower()) for word in words_list if word.lower() not in drop_words]
+        return " ".join(url_words)
+
+
 
     def neg_samples(self, queries, n_tasks):
         """
@@ -156,7 +213,7 @@ class TrainData(object):
 
         return pad_input_ids, pad_input_masks, pad_segment_ids
 
-    def gen_data(self, file_path):
+    def gen_data(self, train_file, eval_file):
         """
         生成数据
         :param file_path:
@@ -164,10 +221,10 @@ class TrainData(object):
         """
 
         # 1，读取原始数据
-        queries = self.load_data(file_path)
+        train_queries, eval_queries = self.load_data(train_file, eval_file)
         print("read finished")
 
-        return queries
+        return train_queries, eval_queries
 
     def gen_task_samples(self, queries, n_tasks):
         """
