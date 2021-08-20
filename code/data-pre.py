@@ -29,11 +29,11 @@ class TrainData(object):
         self.count = 0 # sample num
 
         self.en_train_data_path = os.path.join(config['data_path'], 'train/train_en.tsv')
-		self.tr_train_data_path = os.path.join(config['data_path'], 'train/train_tr.tsv')
-		self.predict_path = os.path.join(config['data_path'], 'to_predict.csv')
-		self.en_doc_info_path = os.path.join(config['data_path'], 'doc_info/en_list_result/')
-		self.tr_doc_info_path = os.path.join(config['data_path'], 'doc_info/tr_list_result/')
-		self.part_range = 30000  # num of file num in doc_info 'part-xxxx'
+        self.tr_train_data_path = os.path.join(config['data_path'], 'train/train_tr.tsv')
+        self.predict_path = os.path.join(config['data_path'], 'to_predict.csv')
+        self.en_doc_info_path = os.path.join(config['data_path'], 'doc_info/en_list_result/')
+        self.tr_doc_info_path = os.path.join(config['data_path'], 'doc_info/tr_list_result/')
+        self.part_range = 30000  # num of file num in doc_info 'part-xxxx'
 
 
     @staticmethod
@@ -122,9 +122,9 @@ class TrainData(object):
     def neg_samples(self, queries, n_tasks):
         """
         随机负采样多个样本
-		Args:
-        	@param queries: (pd.DataFrame) all of the queries data
-        	@param n_tasks: set manually 
+        Args:
+            @param queries: (pd.DataFrame) all of the queries data
+            @param n_tasks: set manually 
 
         return: [], [[]]
         """
