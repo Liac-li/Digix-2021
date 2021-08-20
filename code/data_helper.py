@@ -178,7 +178,7 @@ class TrainData(object):
         return new_queries, new_sims
 
     @staticmethod
-    def train_test_split(*arrays, df_col_name=None, test_size=0.33, eval_size=None, shuffle=True, group_size=1):
+    def train_test_split(*arrays, df_col_name=None, test_size=0.33, eval_size=None, only_eval=False, shuffle=True, group_size=1):
         """
             Split data to train, eval, test set
             Args:
@@ -189,7 +189,7 @@ class TrainData(object):
             return:
             array[i]-train, array[i]-eval, array[i]-test
         """
-        print("=="*20, "\nBegin split train and test data")
+        print("=="*20, "\n[train-test-split]Begin split train and test data")
 
         def get_idx(df, target_col):
             res = []
@@ -217,45 +217,57 @@ class TrainData(object):
                 idx = [(i, i+group_size) for i in range(0, len(array), group_size)]
             if shuffle:
                 random.shuffle(idx)
-            splite_idx = math.floor(len(idx) * test_size)
             # for eval set
-            train_idx = idx[splite_idx:]
+            if only_eval:
+                split_idx = 0
+                train_idx = idx
+            else:
+                split_idx = math.floor(len(idx) * test_size)
+                train_idx = idx[split_idx:]
             eval_idx = random.sample(train_idx, math.floor(len(train_idx)*eval_size))
             eval_num = math.ceil(group_size * eval_size)
-            print("Finish initializing")
+            print("[train&test]Finish initializing")
+
+            # Method for pandas dataFrame
             if isinstance(array, pd.DataFrame):
                 train_set = pd.DataFrame()
                 test_set = pd.DataFrame()
                 eval_set = pd.DataFrame()
     
-                for idx_range in idx[:splite_idx]:
-                    test_set = test_set.append(
-                        array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
-                print("[train&test] Finish test set")
-                for idx_range in idx[splite_idx:]:  # train
-                    train_set = train_set.append(
-                        array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
-                print("[train&test] Finish train set")
+                if split_idx == 0:
+                    train_set = array.copy()
+                    print("[train&test] Finish Train Set(only eval)")
+                else:
+                    for idx_range in idx[:split_idx]: # Test Set
+                        test_set = test_set.append(
+                            array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
+                    print("[train&test] Finish test set")
+                    for idx_range in idx[split_idx:]:  # train
+                        train_set = train_set.append(
+                            array.iloc[idx_range[0]:idx_range[1], :], ignore_index=True)
+                    print("[train&test] Finish train set")
+
                 for idx_range in eval_idx:
                     eval_set = eval_set.append(
                         array.iloc[idx_range[0]:idx_range[1], :].sample(n=eval_num), ignore_index=True)
                 print("[train&test] Finish eval set")
     
-            # TODO: append method of numpy array
+            # Method of numpy array
             if isinstance(array, np.ndarray):
                 train_set, test_set, eval_set = [], [], []
-                for idx_range in idx[:splite_idx]:
-                    test_set.append(array[idx_range[0]:idx_range[1], ])
-                print("[train&test] Finish test set")
-                for idx_range in idx[splite_idx:]:
-                    train_set.append(array[idx_range[0]: idx_range[1], ])
-                print("[train&test] Finish train set")
+                if split_idx == 0:
+                    train_set = copy.copy(array)
+                    print("[train&test] Finish Train Set(Only eval)")
+                else:
+                    for idx_range in idx[:split_idx]:
+                        test_set.append(array[idx_range[0]:idx_range[1], ])
+                    print("[train&test] Finish test set")
+                    for idx_range in idx[split_idx:]:
+                        train_set.append(array[idx_range[0]: idx_range[1], ])
+                    print("[train&test] Finish train set")
                 for idx_range in eval_idx:
                     train_set.append(array[idx_range[0]: idx_range[1], ])
                 print("[train&test] Finish eval set")
- 
-               # get eval_set
-           
 
 
         result.append(train_set)
