@@ -5,6 +5,7 @@ import os
 
 # from data_helper import TrainData
 from predictor import Predictor
+from data_helper import TrainData
 
 class Submiting(object):
     def __init__(self, args):
@@ -13,6 +14,7 @@ class Submiting(object):
             self.config = json.load(fr)
 
         self.predict_model = self.load_predict_model()
+        self.data_obj = self.load_data()
 
         self.__output_path = self.config['output_path']
         if not os.path.exists(self.__output_path):
@@ -22,6 +24,12 @@ class Submiting(object):
     def load_predict_model(self):
         predict_model = Predictor(self.args)
         return predict_model
+    
+    def load_data(self):
+        data_obj = TrainData(self.config)
+        if not os.path.isfile(self.config['output_path']+'test_data.json'):
+            data_obj.gen_predict_data(self.config['predict_file'])
+        return TrainData
     
     def get_origin_file(self):
         self.predict_model.predict()

@@ -25,7 +25,7 @@ class Predictor(object):
         # 加载数据集
         self.data_obj = self.load_data()
         #self.queries = self.data_obj.gen_data(self.config["data"])
-        self.queries = self.data_obj.gen_predict_data(self.config['predict_file'])
+        self.queries = self.data_obj.load_predict_data()
 
         print("test data size: {}".format(len(self.queries)))
 

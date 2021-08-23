@@ -1,4 +1,3 @@
-# -*- coding: UTF-8 -*-
 from bert import tokenization
 import os
 import sys
@@ -50,8 +49,12 @@ class TrainData(object):
             config['data_path'], 'doc_info/test_recall/en_test_urls.csv')
         self.tr_recall_content = os.path.join(
             config['data_path'], 'doc_info/test_recall/tr_test_urls.csv')
-
         self.part_range = 30000  # num of file num in doc_info 'part-xxxx'
+
+
+        # if not os.path.isfile(self.__output_path+'test_data.json'):
+        #     self.gen_predict_data(self.predict_path)
+        
 
     @staticmethod
     def load_data(file_path):
@@ -154,6 +157,7 @@ class TrainData(object):
         @param args: list consist of [qid, query, url]
         :return : text-> text + url same as training    
         '''
+        cnt = 0
         if not df_recall[df_recall['url'] == args[2]].empty:
             tmp_series = df_recall[df_recall['url'] == args[2]]
             title_with_content = (str(tmp_series['title']) +
@@ -162,11 +166,13 @@ class TrainData(object):
         else:
             title_with_content = ''
             url = args[2]
-            print("Missing content")
+            # print("Missing content")
+            cnt += 1
+
 
         res = self.sentence_process(
             title_with_content) + 20 * self.getWordsFromURL(url)
-        return ''.join(res)
+        return ''.join(res), cnt
 
     def gen_predict_data(self, to_predict_path, type='a'):
         '''
@@ -212,14 +218,17 @@ class TrainData(object):
                 )
 
             if type == 'a':  # [query, pos_text, 0]
+                missing_num = 0
                 for idx, row in df_match.iterrows():
                     tmp = []
                     tmp.append(query)
-                    tmp.append(
-                        self.get_text(df_recall,
-                                      [row['qid'], row['query'], row['page']]))
+                    text, num = self.get_text(df_recall,
+                                      [row['qid'], row['query'], row['page']])
+                    missing_num += num
+                    tmp.append(text)
                     tmp.append('0')
                     result.append(tmp)
+                print(f'[gen-predict] missing {missing_num}\{len(df_match)}')
             elif type == 'b':  # [query, pos_text, neg_text]
                 for idx in range(0, len(df_match), 2):
                     tmp = []
@@ -239,59 +248,19 @@ class TrainData(object):
                     else:
                         tmp.append('0')
                     result.append(tmp)
-            if cnt % 100 == 0:
+            if cnt % 15 == 0:
                 print(f"[gen-predict] Converted {cnt}/{total_num}")
+                break
         
         print("[gen-predict] Begin to save file")
         with open(self.__output_path+'test_data.json', 'w', encoding='utf8') as fw:
             json.dump(result, fw)
         print("[gen-predict] Save file success")
-        return self.__output_path+'test_data.json'
 
-        def neg_sample(self, queries, n_tasks)
-        # adding
-        # sampled_content = []
-        # qids = random.sample(set(queries.qid), n_tasks)
-        # sampled_queries = [queries[(queries.qid == qid) & (
-        #     queries.ranking == 0)].reset_index().at[0, 'query'] for qid in qids]
-
-        # for query in sampled_queries:
-        #     # positive sample
-        #     pos_sample = self.get_sample(
-        #         queries, query, 0, sampled_queries, qids)
-        #     # negative sample
-
-        #     if self.__num_sample > 1:
-        #     neg_sample = self.get_sample(
-        #         queries, query, 10, sampled_queries, qids)
-
-        #     sampled_content.append([pos_sample, neg_sample])
-        # assert len(sampled_queries) == len(sampled_content)
-        # return sampled_queries, sampled_content
-
-        new_queries = []
-        new_sims = []
-
-        qids = random.sample(set(queries.qid), n_tasks)
-        cor_qids = list(set(queries.qid) - set(qids))
-
-        for i in range(n_tasks):
-            for rank in range(100):
-                if not queries[(queries['qid'] == qids[i])
-                               & (queries['ranking'] == rank)].empty:
-                    pos_q = queries[(queries['qid'] == qids[i])
-                                    & (queries['ranking'] == rank)]
-            neg_sim = random.sample(cor_qids, self.__num_samples - 1)
-            neg_q = queries[queries['qid'].isin(neg_sim)].sample(
-                n=self.__num_samples - 1)
-
-            tmp = []
-            for index, item in pos_q.append(neg_q).iterrows():
-                tmp.append(self.get_tokens(item))
-
-            new_queries.append(pos_q['query'])
-            new_sims.append(tmp)
-        return new_queries, new_sims
+    def load_predict_data(self):
+        with open(self.__output_path+'test_data.json', 'r', encoding='utf8') as fr:
+            queries = json.load(fr)
+        return queries
 
     @staticmethod
     def train_test_split(*arrays,
@@ -402,6 +371,62 @@ class TrainData(object):
         result.append(test_set)
 
         return tuple(result)
+
+    def neg_samples(self, queries, n_tasks):
+        """
+        随机负采样多个样本
+        Args:
+        @param queries: (pd.DataFrame) all of the queries data
+        @param n_tasks: set manually 
+
+        return: [], [[]]
+        """
+
+        # adding
+        # sampled_content = []
+        # qids = random.sample(set(queries.qid), n_tasks)
+        # sampled_queries = [queries[(queries.qid == qid) & (
+        #     queries.ranking == 0)].reset_index().at[0, 'query'] for qid in qids]
+
+        # for query in sampled_queries:
+        #     # positive sample
+        #     pos_sample = self.get_sample(
+        #         queries, query, 0, sampled_queries, qids)
+        #     # negative sample
+
+        #     if self.__num_sample > 1:
+        #     neg_sample = self.get_sample(
+        #         queries, query, 10, sampled_queries, qids)
+
+        #     sampled_content.append([pos_sample, neg_sample])
+        # assert len(sampled_queries) == len(sampled_content)
+        # return sampled_queries, sampled_content
+
+        new_queries = []
+        new_sims = []
+
+        qids = random.sample(set(queries.qid), n_tasks)
+
+        for i in range(n_tasks):
+            rank = 0
+            while True:
+                rank = random.randint(0, 99 - self.__num_samples) # ! 也许可以设置的靠前一些
+                if not queries[(queries['qid'] == qids[i])
+                                & (queries['ranking'] == rank)].empty:
+                    pos_q = queries[(queries['qid'] == qids[i])
+                                & (queries['ranking'] == rank)]
+                    break
+            neg_sim = queries[(queries['qid'] == qids[i])
+                            & (queries['ranking'] > rank)].sample(n=self.__num_samples - 1)
+
+            tmp = []
+            for index, item in pos_q.append(neg_sim).iterrows():
+                tmp.append(self.get_tokens(item))
+
+            new_queries.append(pos_q['query'])
+            new_sims.append(tmp)
+        return new_queries, new_sims
+
 
     def trans_to_index(self, texts):
         """
