@@ -171,20 +171,21 @@ class TrainData(object):
         new_sims = []
 
         qids = random.sample(set(queries.qid), n_tasks)
-        cor_qids = list(set(queries.qid) - set(qids))
 
         for i in range(n_tasks):
-            for rank in range(100):
+            rank = 0
+            while True:
+                rank = random.randint(0, 99 - self.__num_samples) # ! 也许可以设置的靠前一些
                 if not queries[(queries['qid'] == qids[i])
-                               & (queries['ranking'] == rank)].empty:
+                                & (queries['ranking'] == rank)].empty:
                     pos_q = queries[(queries['qid'] == qids[i])
-                                    & (queries['ranking'] == rank)]
-            neg_sim = random.sample(cor_qids, self.__num_samples - 1)
-            neg_q = queries[queries['qid'].isin(neg_sim)].sample(
-                n=self.__num_samples - 1)
+                                & (queries['ranking'] == rank)]
+                    break
+            neg_sim = queries[(queries['qid'] == qids[i])
+                            & (queries['ranking'] > rank)].sample(n=self.__num_samples - 1)
 
             tmp = []
-            for index, item in pos_q.append(neg_q).iterrows():
+            for index, item in pos_q.append(neg_sim).iterrows():
                 tmp.append(self.get_tokens(item))
 
             new_queries.append(pos_q['query'])
