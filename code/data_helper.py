@@ -19,6 +19,7 @@ turkStem = TurkishStemmer()
 
 class TrainData(object):
     def __init__(self, config):
+        self.config = config
         self.__vocab_path = os.path.join(config["bert_model_path"],
                                          "vocab.txt")
         self.__output_path = config["output_path"]
@@ -41,6 +42,14 @@ class TrainData(object):
                                              'doc_info/en_list_result/')
         self.tr_doc_info_path = os.path.join(config['data_path'],
                                              'doc_info/tr_list_result/')
+        self.tr_recall_path = os.path.join(config['data_path'],
+                                           'recall/tr_recall_10.csv')
+        self.en_recall_path = os.path.join(config['data_path'],
+                                           'recall/en_recall_10.csv')
+        self.en_recall_content = os.path.join(
+            config['data_path'], 'doc_info/test_recall/en_test_urls.csv')
+        self.tr_recall_content = os.path.join(
+            config['data_path'], 'doc_info/test_recall/tr_test_urls.csv')
 
         self.part_range = 30000  # num of file num in doc_info 'part-xxxx'
 
@@ -53,7 +62,8 @@ class TrainData(object):
         data = data[data.link_index != '(-1, -1)'].reset_index(drop=True)
         return data
 
-    def sentence_process(self, sentence):
+    @staticmethod
+    def sentence_process(sentence):
         replacement_pool = [
             ['<br>', ' '],
             ['"', ' '],
@@ -90,7 +100,8 @@ class TrainData(object):
         tokens = sentence.split()
         return tokens
 
-    def getWordsFromURL(self, url, lang):
+    @staticmethod
+    def getWordsFromURL(url):
         words_list = re.compile(r'[\:/?=\-&.,_@%!$0123456789()&*+\[\]]+',
                                 re.UNICODE).split(url)
         drop_words = set([
@@ -134,63 +145,109 @@ class TrainData(object):
             title_with_content = (parts[1] + ' ') * 20 + '.' + parts[2]
         # print(len(title_with_content), type(title_with_content))
         res = self.sentence_process(
-            title_with_content) + 20 * self.getWordsFromURL(parts[0], lang)
+            title_with_content) + 20 * self.getWordsFromURL(parts[0])
         return res
 
-    def neg_samples(self, queries, n_tasks):
-        """
-        随机负采样多个样本
-        Args:
-        @param queries: (pd.DataFrame) all of the queries data
-        @param n_tasks: set manually 
+    def get_text(self, df_recall, args):
+        '''
+        Get text with args->[qid, query, url]
+        @param args: list consist of [qid, query, url]
+        :return : text-> text + url same as training    
+        '''
+        if not df_recall[df_recall['url'] == args[2]].empty:
+            tmp_series = df_recall[df_recall['url'] == args[2]]
+            title_with_content = (str(tmp_series['title']) +
+                              ' ') * 20 + '.' + str(tmp_series['content'])
+            url = str(tmp_series['url'])
+        else:
+            title_with_content = ''
+            url = args[2]
+            print("Missing content")
 
-        return: [], [[]]
-        """
 
-        # adding
-        # sampled_content = []
-        # qids = random.sample(set(queries.qid), n_tasks)
-        # sampled_queries = [queries[(queries.qid == qid) & (
-        #     queries.ranking == 0)].reset_index().at[0, 'query'] for qid in qids]
+        res = self.sentence_process(
+            title_with_content) + 20 * self.getWordsFromURL(url)
+        return ''.join(res)
 
-        # for query in sampled_queries:
-        #     # positive sample
-        #     pos_sample = self.get_sample(
-        #         queries, query, 0, sampled_queries, qids)
-        #     # negative sample
+    def gen_predict_data(self, to_predict_path, type='a'):
+        '''
+        Generate data to predict like type [[query, text1, text2], []]
+        @param type: output type to gen:
+            a: all top100 text in single list [[query, text1, ..., text100]]
+            b: all top100 text in different list with same query [[query, text1], [query, text2],...]]
+        :return : a list consists of query with text list
+        '''
+        print("=="*20 + "\n[gen-predict] Begin to gen data")
+        df_predict = pd.read_csv(to_predict_path, encoding='utf8')
+        df_tr_recall = pd.read_csv(self.tr_recall_path, encoding='utf8')
+        df_en_recall = pd.read_csv(self.en_recall_path, encoding='utf8')
+        df_en_urls = pd.read_csv(self.en_recall_content,
+                                 encoding='utf8',
+                                 sep='\x01',
+                                 warn_bad_lines=True,
+                                 error_bad_lines=False)
+        df_tr_urls = pd.read_csv(self.tr_recall_content,
+                                 encoding='utf8',
+                                 sep='\x01',
+                                 warn_bad_lines=True,
+                                 error_bad_lines=False)
+        print("[gen-predict] Load df over")
 
-        #     if self.__num_sample > 1:
-        #     neg_sample = self.get_sample(
-        #         queries, query, 10, sampled_queries, qids)
+        result = []
+        # gen target data one by one on query
+        total_num = len(df_predict)
+        cnt = 0
+        for index, row in df_predict.iterrows():
+            cnt += 1
+            qid, query = row['qid'], row['query']
+            if qid[:2] == 'tr':
+                df_recall = df_tr_urls
+                df_match = df_tr_recall[df_tr_recall['qid'] == qid]
+            elif qid[:2] == 'en':
+                df_recall = df_en_urls
+                df_match = df_en_recall[df_en_recall['qid'] == qid]
 
-        #     sampled_content.append([pos_sample, neg_sample])
-        # assert len(sampled_queries) == len(sampled_content)
-        # return sampled_queries, sampled_content
+            if len(df_match) != 100:
+                print(
+                    f"[gen_predict_data] {qid} matchs only {len(df_match)} texts"
+                )
 
-        new_queries = []
-        new_sims = []
+            if type == 'a':  # [query, pos_text, 0]
+                for idx, row in df_match.iterrows():
+                    tmp = []
+                    tmp.append(query)
+                    tmp.append(
+                        self.get_text(df_recall,
+                                      [row['qid'], row['query'], row['page']]))
+                    tmp.append('0')
+                    result.append(tmp)
+            elif type == 'b':  # [query, pos_text, neg_text]
+                for idx in range(0, len(df_match), 2):
+                    tmp = []
+                    tmp.append(query)
 
-        qids = random.sample(set(queries.qid), n_tasks)
-
-        for i in range(n_tasks):
-            rank = 0
-            while True:
-                rank = random.randint(0, 99 - self.__num_samples) # ! 也许可以设置的靠前一些
-                if not queries[(queries['qid'] == qids[i])
-                                & (queries['ranking'] == rank)].empty:
-                    pos_q = queries[(queries['qid'] == qids[i])
-                                & (queries['ranking'] == rank)]
-                    break
-            neg_sim = queries[(queries['qid'] == qids[i])
-                            & (queries['ranking'] > rank)].sample(n=self.__num_samples - 1)
-
-            tmp = []
-            for index, item in pos_q.append(neg_sim).iterrows():
-                tmp.append(self.get_tokens(item))
-
-            new_queries.append(pos_q['query'])
-            new_sims.append(tmp)
-        return new_queries, new_sims
+                    tmp_s = df_match.loc[idx, :]
+                    tmp.append(
+                        self.get_text(
+                            df_recall,
+                            [tmp_s['qid'], tmp['query'], tmp['page']]))
+                    if idx + 1 < len():
+                        tmp_s = df_match.loc[idx + 1, :]
+                        tmp.append(
+                            self.get_text(
+                                df_recall,
+                                [tmp_s['qid'], tmp['query'], tmp['page']]))
+                    else:
+                        tmp.append('0')
+                    result.append(tmp)
+            if cnt % 100 == 0:
+                print(f"[gen-predict] Converted {cnt}/{total_num}")
+        
+        print("[gen-predict] Begin to save file")
+        with open(self.__output_path+'test_data.json', 'w', encoding='utf8') as fw:
+            json.dump(result, fw)
+        print("[gen-predict] Save file success")
+        return self.__output_path+'test_data.json'
 
     @staticmethod
     def train_test_split(*arrays,
@@ -358,6 +415,67 @@ class TrainData(object):
                 pad_segment_ids.append(segment_id[:self._sequence_length])
 
         return pad_input_ids, pad_input_masks, pad_segment_ids
+
+    def gen_test_samples(self, queries):
+        '''
+        get samples for all to predict data
+        @param queries: list consist of [[query, pos_sample, neg_sample], [], ...]
+        :return :
+        '''
+        text_as, text_bs = [], []
+        for query_sample in queries:
+            text_as.append(query_sample[0])
+            text_bs.append(query_sample[1:])
+
+        input_ids_a, input_masks_a, segment_ids_a = self.trans_to_index(
+            text_as)
+        input_ids_a, input_masks_a, segment_ids_a = self.padding(
+            input_ids_a, input_masks_a, segment_ids_a)
+
+        input_ids_b, input_masks_b, segment_ids_b = [], [], []
+        for text_b in text_bs:
+            input_id_b, input_mask_b, segment_id_b = self.trans_to_index(
+                text_b)
+            input_id_b, input_mask_b, segment_id_b = self.padding(
+                input_id_b, input_mask_b, segment_id_b)
+
+            input_ids_b.append(input_id_b)
+            input_masks_b.append(input_mask_b)
+            segment_ids_b.append(segment_id_b)
+
+        return input_ids_a, input_masks_a, segment_ids_a, input_ids_b, input_masks_b, segment_ids_b
+
+    @staticmethod
+    def next_test_batch(input_ids_a,
+                        input_masks_a,
+                        segment_ids_a,
+                        input_ids_b,
+                        input_masks_b,
+                        segment_ids_b,
+                        batch_size=100):
+        """
+        生成batch个体predictor预测，一个query一个batch
+        """
+
+        num_batches = len(input_ids_a) // batch_size
+        for i in range(num_batches):
+            start = i * batch_size
+            end = start + batch_size
+
+            batch_input_ids_a = input_ids_a[start:end]
+            batch_input_masks_a = input_masks_a[start:end]
+            batch_segment_ids_a = segment_ids_a[start:end]
+
+            batch_input_ids_b = input_ids_b[start:end]
+            batch_input_masks_b = input_masks_b[start:end]
+            batch_segment_ids_b = segment_ids_b[start:end]
+
+            yield dict(input_ids_a=batch_input_ids_a,
+                       input_masks_a=batch_input_masks_a,
+                       segment_ids_a=batch_segment_ids_a,
+                       input_ids_b=list(chain(*batch_input_ids_b)),
+                       input_masks_b=list(chain(*batch_input_masks_b)),
+                       segment_ids_b=list(chain(*batch_segment_ids_b)))
 
     def gen_data(self, file_path):
         """

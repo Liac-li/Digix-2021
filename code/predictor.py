@@ -14,7 +14,7 @@ from data_helper import TrainData
 from metrics import mean, accuracy
 
 
-class Preditor(object):
+class Predictor(object):
     def __init__(self, args):
         self.args = args
         with open(args.config_path, "r") as fr:
@@ -24,7 +24,8 @@ class Preditor(object):
 
         # 加载数据集
         self.data_obj = self.load_data()
-        self.queries = self.data_obj.gen_data(self.config["data"])
+        #self.queries = self.data_obj.gen_data(self.config["data"])
+        self.queries = self.data_obj.gen_predict_data(self.config['predict_file'])
 
         print("test data size: {}".format(len(self.queries)))
 
@@ -89,7 +90,7 @@ class Preditor(object):
             t_in_ids_a, t_in_masks_a, t_seg_ids_a, t_in_ids_b, t_in_masks_b, t_seg_ids_b = \
                 self.data_obj.gen_test_samples(self.queries)
 
-            for batch in self.data_obj.next_batch(t_in_ids_a, t_in_masks_a, t_seg_ids_a,
+            for batch in self.data_obj.next_test_batch(t_in_ids_a, t_in_masks_a, t_seg_ids_a,
                                                     t_in_ids_b, t_in_masks_b, t_seg_ids_b):
                 # predictions, similarity = self.infer(sess, batch)
                 predictions, similarity = self.model.infer(sess, batch)
@@ -97,6 +98,7 @@ class Preditor(object):
                 current_step += 1
                 print(predictions)
                 print(similarity)
+                break
              
 
 # python predictor.py --config_path=test_config.json
@@ -105,5 +107,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", help="config path of model")
     args = parser.parse_args()
-    Preditor = Preditor(args)
-    Preditor.predict()
+    Predictor = Predictor(args)
+    Predictor.predict()
