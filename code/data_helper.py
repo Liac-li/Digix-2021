@@ -164,7 +164,6 @@ class TrainData(object):
             url = args[2]
             print("Missing content")
 
-
         res = self.sentence_process(
             title_with_content) + 20 * self.getWordsFromURL(url)
         return ''.join(res)
@@ -248,6 +247,51 @@ class TrainData(object):
             json.dump(result, fw)
         print("[gen-predict] Save file success")
         return self.__output_path+'test_data.json'
+
+        def neg_sample(self, queries, n_tasks)
+        # adding
+        # sampled_content = []
+        # qids = random.sample(set(queries.qid), n_tasks)
+        # sampled_queries = [queries[(queries.qid == qid) & (
+        #     queries.ranking == 0)].reset_index().at[0, 'query'] for qid in qids]
+
+        # for query in sampled_queries:
+        #     # positive sample
+        #     pos_sample = self.get_sample(
+        #         queries, query, 0, sampled_queries, qids)
+        #     # negative sample
+
+        #     if self.__num_sample > 1:
+        #     neg_sample = self.get_sample(
+        #         queries, query, 10, sampled_queries, qids)
+
+        #     sampled_content.append([pos_sample, neg_sample])
+        # assert len(sampled_queries) == len(sampled_content)
+        # return sampled_queries, sampled_content
+
+        new_queries = []
+        new_sims = []
+
+        qids = random.sample(set(queries.qid), n_tasks)
+        cor_qids = list(set(queries.qid) - set(qids))
+
+        for i in range(n_tasks):
+            for rank in range(100):
+                if not queries[(queries['qid'] == qids[i])
+                               & (queries['ranking'] == rank)].empty:
+                    pos_q = queries[(queries['qid'] == qids[i])
+                                    & (queries['ranking'] == rank)]
+            neg_sim = random.sample(cor_qids, self.__num_samples - 1)
+            neg_q = queries[queries['qid'].isin(neg_sim)].sample(
+                n=self.__num_samples - 1)
+
+            tmp = []
+            for index, item in pos_q.append(neg_q).iterrows():
+                tmp.append(self.get_tokens(item))
+
+            new_queries.append(pos_q['query'])
+            new_sims.append(tmp)
+        return new_queries, new_sims
 
     @staticmethod
     def train_test_split(*arrays,
