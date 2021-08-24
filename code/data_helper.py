@@ -51,10 +51,8 @@ class TrainData(object):
             config['data_path'], 'doc_info/test_recall/tr_test_urls.csv')
         self.part_range = 30000  # num of file num in doc_info 'part-xxxx'
 
-
         # if not os.path.isfile(self.__output_path+'test_data.json'):
         #     self.gen_predict_data(self.predict_path)
-        
 
     @staticmethod
     def load_data(file_path):
@@ -145,10 +143,11 @@ class TrainData(object):
         elif len(parts) == 2:
             title_with_content = parts[1]
         else:
-            title_with_content = (parts[1] + ' ') * 20 + '.' + parts[2]
+            title_with_content = parts[1] + ' ' + '.' + parts[2]
         # print(len(title_with_content), type(title_with_content))
-        res = self.sentence_process(
-            title_with_content) + 20 * self.getWordsFromURL(parts[0])
+        res = self.sentence_process(title_with_content) + [
+            '*'
+        ] + self.getWordsFromURL(parts[0])
         return res
 
     def get_text(self, df_recall, args):
@@ -160,8 +159,8 @@ class TrainData(object):
         cnt = 0
         if not df_recall[df_recall['url'] == args[2]].empty:
             tmp_series = df_recall[df_recall['url'] == args[2]]
-            title_with_content = (str(tmp_series['title']) +
-                              ' ') * 20 + '.' + str(tmp_series['content'])
+            title_with_content = str(tmp_series['title']) + ' ' + '.' + str(
+                tmp_series['content'])
             url = str(tmp_series['url'])
         else:
             title_with_content = ''
@@ -169,12 +168,12 @@ class TrainData(object):
             # print("Missing content")
             cnt += 1
 
-
-        res = self.sentence_process(
-            title_with_content) + 20 * self.getWordsFromURL(url)
+        res = self.sentence_process(title_with_content) + [
+            '*'
+        ] + self.getWordsFromURL(url)
         return ''.join(res), cnt
 
-    def gen_predict_data(self, to_predict_path, type='a'):
+    def gen_predict_data(self, type='a'):
         '''
         Generate data to predict like type [[query, text1, text2], []]
         @param type: output type to gen:
@@ -182,8 +181,8 @@ class TrainData(object):
             b: all top100 text in different list with same query [[query, text1], [query, text2],...]]
         :return : a list consists of query with text list
         '''
-        print("=="*20 + "\n[gen-predict] Begin to gen data")
-        df_predict = pd.read_csv(to_predict_path, encoding='utf8')
+        print("==" * 20 + "\n[gen-predict] Begin to gen data")
+        df_predict = pd.read_csv(self.predict_path, encoding='utf8')
         df_tr_recall = pd.read_csv(self.tr_recall_path, encoding='utf8')
         df_en_recall = pd.read_csv(self.en_recall_path, encoding='utf8')
         df_en_urls = pd.read_csv(self.en_recall_content,
@@ -222,11 +221,12 @@ class TrainData(object):
                 for idx, row in df_match.iterrows():
                     tmp = []
                     tmp.append(query)
-                    text, num = self.get_text(df_recall,
-                                      [row['qid'], row['query'], row['page']])
+                    text, num = self.get_text(
+                        df_recall, [row['qid'], row['query'], row['page']])
                     missing_num += num
                     tmp.append(text)
-                    tmp.append('0')
+                    tmp.append(row['qid'] + '\x01' +
+                               row['page'])  # ! for final gain the url using
                     result.append(tmp)
                 print(f'[gen-predict] missing {missing_num}\{len(df_match)}')
             elif type == 'b':  # [query, pos_text, neg_text]
@@ -248,17 +248,19 @@ class TrainData(object):
                     else:
                         tmp.append('0')
                     result.append(tmp)
-            if cnt % 15 == 0:
+            if cnt % 3 == 0:
                 print(f"[gen-predict] Converted {cnt}/{total_num}")
                 break
-        
+
         print("[gen-predict] Begin to save file")
-        with open(self.__output_path+'test_data.json', 'w', encoding='utf8') as fw:
+        with open(self.__output_path + 'test_data.json', 'w',
+                  encoding='utf8') as fw:
             json.dump(result, fw)
         print("[gen-predict] Save file success")
 
     def load_predict_data(self):
-        with open(self.__output_path+'test_data.json', 'r', encoding='utf8') as fr:
+        with open(self.__output_path + 'test_data.json', 'r',
+                  encoding='utf8') as fr:
             queries = json.load(fr)
         return queries
 
@@ -410,14 +412,17 @@ class TrainData(object):
         for i in range(n_tasks):
             rank = 0
             while True:
-                rank = random.randint(0, 99 - self.__num_samples) # ! 也许可以设置的靠前一些
+                rank = random.randint(0,
+                                      33 - self.__num_samples)  # ! 也许可以设置的靠前一些
                 if not queries[(queries['qid'] == qids[i])
-                                & (queries['ranking'] == rank)].empty:
+                               & (queries['ranking'] == rank)].empty:
                     pos_q = queries[(queries['qid'] == qids[i])
-                                & (queries['ranking'] == rank)]
+                                    & (queries['ranking'] == rank)]
                     break
+
             neg_sim = queries[(queries['qid'] == qids[i])
-                            & (queries['ranking'] > rank)].sample(n=self.__num_samples - 1)
+                              & (queries['ranking'] > rank)].sample(
+                                  n=self.__num_samples - 1)
 
             tmp = []
             for index, item in pos_q.append(neg_sim).iterrows():
@@ -426,7 +431,6 @@ class TrainData(object):
             new_queries.append(pos_q['query'])
             new_sims.append(tmp)
         return new_queries, new_sims
-
 
     def trans_to_index(self, texts):
         """
@@ -495,14 +499,18 @@ class TrainData(object):
         for query_sample in queries:
             text_as.append(query_sample[0])
             text_bs.append(query_sample[1:])
+        print('Load all query')
 
         input_ids_a, input_masks_a, segment_ids_a = self.trans_to_index(
             text_as)
         input_ids_a, input_masks_a, segment_ids_a = self.padding(
             input_ids_a, input_masks_a, segment_ids_a)
 
+        print('Finish part A process')
         input_ids_b, input_masks_b, segment_ids_b = [], [], []
+        cnt = 0
         for text_b in text_bs:
+            cnt += 1
             input_id_b, input_mask_b, segment_id_b = self.trans_to_index(
                 text_b)
             input_id_b, input_mask_b, segment_id_b = self.padding(
@@ -511,25 +519,21 @@ class TrainData(object):
             input_ids_b.append(input_id_b)
             input_masks_b.append(input_mask_b)
             segment_ids_b.append(segment_id_b)
-
+            if cnt % (len(text_bs) // 50) == 0:
+                print(f"Converted {cnt}/{len(text_bs)}")
+        print('Finish part B process')
         return input_ids_a, input_masks_a, segment_ids_a, input_ids_b, input_masks_b, segment_ids_b
 
-    @staticmethod
-    def next_test_batch(input_ids_a,
-                        input_masks_a,
-                        segment_ids_a,
-                        input_ids_b,
-                        input_masks_b,
-                        segment_ids_b,
-                        batch_size=100):
+    def next_test_batch(self, input_ids_a, input_masks_a, segment_ids_a,
+                        input_ids_b, input_masks_b, segment_ids_b):
         """
         生成batch个体predictor预测，一个query一个batch
         """
 
-        num_batches = len(input_ids_a) // batch_size
+        num_batches = len(input_ids_a) // self._batch_size
         for i in range(num_batches):
-            start = i * batch_size
-            end = start + batch_size
+            start = i * self._batch_size
+            end = start + self._batch_size
 
             batch_input_ids_a = input_ids_a[start:end]
             batch_input_masks_a = input_masks_a[start:end]
