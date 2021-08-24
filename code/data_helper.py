@@ -157,7 +157,8 @@ class TrainData(object):
         :return : text-> text + url same as training    
         '''
         cnt = 0
-        if not df_recall[df_recall['url'] == args[2]].empty:
+        if not df_recall[df_recall['url'] ==
+                         args[2]].empty:  # ! 有匹配失败的问题，会打印出100个内多少失败
             tmp_series = df_recall[df_recall['url'] == args[2]]
             title_with_content = str(tmp_series['title']) + ' ' + '.' + str(
                 tmp_series['content'])
@@ -175,7 +176,7 @@ class TrainData(object):
 
     def gen_predict_data(self, type='a'):
         '''
-        Generate data to predict like type [[query, text1, text2], []]
+        Generate data to predict like type [[query, sample to test, qid\x01url], []]
         @param type: output type to gen:
             a: all top100 text in single list [[query, text1, ..., text100]]
             b: all top100 text in different list with same query [[query, text1], [query, text2],...]]
@@ -229,7 +230,7 @@ class TrainData(object):
                                row['page'])  # ! for final gain the url using
                     result.append(tmp)
                 print(f'[gen-predict] missing {missing_num}\{len(df_match)}')
-            elif type == 'b':  # [query, pos_text, neg_text]
+            elif type == 'b':  # ! 没用到
                 for idx in range(0, len(df_match), 2):
                     tmp = []
                     tmp.append(query)
@@ -259,6 +260,9 @@ class TrainData(object):
         print("[gen-predict] Save file success")
 
     def load_predict_data(self):
+        """
+        加载被gen_predict_data保存的数据
+        """
         with open(self.__output_path + 'test_data.json', 'r',
                   encoding='utf8') as fr:
             queries = json.load(fr)
@@ -491,6 +495,8 @@ class TrainData(object):
 
     def gen_test_samples(self, queries):
         '''
+        ！ 此处硬编码了num_sample 为 query + pos_sample + neg_sample 共3个
+        读取所有的数据
         get samples for all to predict data
         @param queries: list consist of [[query, pos_sample, neg_sample], [], ...]
         :return :
@@ -527,7 +533,7 @@ class TrainData(object):
     def next_test_batch(self, input_ids_a, input_masks_a, segment_ids_a,
                         input_ids_b, input_masks_b, segment_ids_b):
         """
-        生成batch个体predictor预测，一个query一个batch
+        生成batch个体predictor预测，一个query一个batch，基本和next_batch一致
         """
 
         num_batches = len(input_ids_a) // self._batch_size

@@ -14,10 +14,11 @@ sys.path.append(os.path.dirname(os.getcwd()))
 
 turkStem = TurkishStemmer()
 
+
 class TrainData(object):
     def __init__(self, config):
-        self.__vocab_path = os.path.join(
-            config["bert_model_path"], "vocab.txt")
+        self.__vocab_path = os.path.join(config["bert_model_path"],
+                                         "vocab.txt")
         self.__output_path = config["output_path"]
         if not os.path.exists(self.__output_path):
             os.makedirs(self.__output_path)
@@ -26,15 +27,18 @@ class TrainData(object):
 
         self.__num_samples = config["num_samples"]
 
-        self.count = 0 # sample num
+        self.count = 0  # sample num
 
-        self.en_train_data_path = os.path.join(config['data_path'], 'train/train_en.tsv')
-        self.tr_train_data_path = os.path.join(config['data_path'], 'train/train_tr.tsv')
+        self.en_train_data_path = os.path.join(config['data_path'],
+                                               'train/train_en.tsv')
+        self.tr_train_data_path = os.path.join(config['data_path'],
+                                               'train/train_tr.tsv')
         self.predict_path = os.path.join(config['data_path'], 'to_predict.csv')
-        self.en_doc_info_path = os.path.join(config['data_path'], 'doc_info/en_list_result/')
-        self.tr_doc_info_path = os.path.join(config['data_path'], 'doc_info/tr_list_result/')
+        self.en_doc_info_path = os.path.join(config['data_path'],
+                                             'doc_info/en_list_result/')
+        self.tr_doc_info_path = os.path.join(config['data_path'],
+                                             'doc_info/tr_list_result/')
         self.part_range = 30000  # num of file num in doc_info 'part-xxxx'
-
 
     @staticmethod
     def load_data(file_path):
@@ -43,7 +47,6 @@ class TrainData(object):
         """
         data = pd.read_csv(file_path).iloc[:, 1:]
         return data
-
 
     def sentence_processing(sentence):
         replacement_pool = [
@@ -82,14 +85,19 @@ class TrainData(object):
         tokens = sentence.split()
         return tokens
 
-
     def getWordsFromURL(url, lang):
-        words_list = re.compile(r'[\:/?=\-&.,_@%!$0123456789()&*+\[\]]+',re.UNICODE).split(url)
-        drop_words = set(['', 'http', 'https', 'www', 'com', '\t', 'm', 'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'n',
-                      'o', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'y', 'z'])
+        words_list = re.compile(r'[\:/?=\-&.,_@%!$0123456789()&*+\[\]]+',
+                                re.UNICODE).split(url)
+        drop_words = set([
+            '', 'http', 'https', 'www', 'com', '\t', 'm', 'b', 'c', 'd', 'f',
+            'g', 'h', 'j', 'k', 'l', 'n', 'o', 'p', 'q', 'r', 's', 't', 'v',
+            'w', 'x', 'y', 'z'
+        ])
 
-        return [turkStem.stem(word.lower()) for word in words_list if word.lower() not in drop_words]
-
+        return [
+            turkStem.stem(word.lower()) for word in words_list
+            if word.lower() not in drop_words
+        ]
 
     def get_tokens(self, series):
         """
@@ -99,25 +107,29 @@ class TrainData(object):
         link_index = eval(series['link_index'])
         lang = series['qid'][:2]
         if lang == 'en':
-            with open(self.en_doc_info_path+'part-%05d'%link_index[0], 'r', encoding='utf8') as fr:
+            with open(self.en_doc_info_path + 'part-%05d' % link_index[0],
+                      'r',
+                      encoding='utf8') as fr:
                 line = fr.readlines()[link_index[1]]
         elif lang == 'tr':
-            with open(self.tr_doc_info_path+'part-%05d'%link_index[0], 'r', encoding='utf8') as fr:
+            with open(self.tr_doc_info_path + 'part-%05d' % link_index[0],
+                      'r',
+                      encoding='utf8') as fr:
                 line = fr.readlines()[link_index[1]]
         else:
             raise NameError('Language type not match')
-        
-        parts = line.split('\x01')[:3] # ! set as url-title-rank, may need to change
+
+        parts = line.split(
+            '\x01')[:3]  # ! set as url-title-rank, may need to change
         if len(parts) == 1:
             title_with_content = ''
         elif len(parts) == 2:
             title_with_content = parts[1]
         else:
             title_with_content = (parts[1] + ' ') * 20 + '.' + parts[2]
-        res = self.sentence_process(title_with_content) + 20 * self.getWordsFromURL(parts[0], lang)
+        res = self.sentence_process(
+            title_with_content) + 20 * self.getWordsFromURL(parts[0], lang)
         return res
-
-
 
     def neg_samples(self, queries, n_tasks):
         """
@@ -128,7 +140,7 @@ class TrainData(object):
 
         return: [], [[]]
         """
-        
+
         # adding
         # sampled_content = []
         # qids = random.sample(set(queries.qid), n_tasks)
@@ -148,18 +160,19 @@ class TrainData(object):
         #     sampled_content.append([pos_sample, neg_sample])
         # assert len(sampled_queries) == len(sampled_content)
         # return sampled_queries, sampled_content
-        
+
         new_queries = []
         new_sims = []
 
         qids = random.sample(set(queries.qid), n_tasks)
         cor_qids = list(set(queries.qid) - set(qids))
 
-
         for i in range(n_tasks):
-            pos_q = queries[(queries['qid'] == qids[i]) & (queries['ranking'] == 0)]
+            pos_q = queries[(queries['qid'] == qids[i])
+                            & (queries['ranking'] == 0)]
             neg_sim = random.sample(cor_qids, self.__num_samples - 1)
-            neg_q = queries[queries['qid'].isin(neg_sim)].sample(n=self.__num_samples-1)
+            neg_q = queries[queries['qid'].isin(neg_sim)].sample(
+                n=self.__num_samples - 1)
 
             tmp = []
             for index, item in pos_q.append(neg_q).iterrows():
@@ -169,17 +182,14 @@ class TrainData(object):
             new_sims.append(tmp)
         return new_queries, new_sims
 
-
-            
-
     def trans_to_index(self, texts):
         """
         将输入转化为索引表示
         :param texts: 输入格式：[], 如果is_sim为True，则格式：[[]]
         :return:
         """
-        tokenizer = tokenization.FullTokenizer(
-            vocab_file=self.__vocab_path, do_lower_case=True)
+        tokenizer = tokenization.FullTokenizer(vocab_file=self.__vocab_path,
+                                               do_lower_case=True)
         input_ids = []
         input_masks = []
         segment_ids = []
@@ -198,7 +208,6 @@ class TrainData(object):
             segment_ids.append([0] * len(input_id))
         return input_ids, input_masks, segment_ids
 
-
     def padding(self, input_ids, input_masks, segment_ids):
         """
         对序列进行补全
@@ -208,21 +217,23 @@ class TrainData(object):
         :return:
         """
         pad_input_ids, pad_input_masks, pad_segment_ids = [], [], []
-        for input_id, input_mask, segment_id in zip(input_ids, input_masks, segment_ids):
+        for input_id, input_mask, segment_id in zip(input_ids, input_masks,
+                                                    segment_ids):
             if len(input_id) < self._sequence_length:
-                pad_input_ids.append(
-                    input_id + [0] * (self._sequence_length - len(input_id)))
+                pad_input_ids.append(input_id + [0] *
+                                     (self._sequence_length - len(input_id)))
                 pad_input_masks.append(
-                    input_mask + [0] * (self._sequence_length - len(input_mask)))
+                    input_mask + [0] *
+                    (self._sequence_length - len(input_mask)))
                 pad_segment_ids.append(
-                    segment_id + [0] * (self._sequence_length - len(segment_id)))
+                    segment_id + [0] *
+                    (self._sequence_length - len(segment_id)))
             else:
                 pad_input_ids.append(input_id[:self._sequence_length])
                 pad_input_masks.append(input_mask[:self._sequence_length])
                 pad_segment_ids.append(segment_id[:self._sequence_length])
 
         return pad_input_ids, pad_input_masks, pad_segment_ids
-
 
     def gen_data(self, file_path):
         """
@@ -236,7 +247,6 @@ class TrainData(object):
         print("read finished")
 
         return queries
-
 
     def gen_task_samples(self, queries, n_tasks):
         """
@@ -268,8 +278,8 @@ class TrainData(object):
 
         return input_ids_a, input_masks_a, segment_ids_a, input_ids_b, input_masks_b, segment_ids_b
 
-
-    def next_batch(self, input_ids_a, input_masks_a, segment_ids_a, input_ids_b, input_masks_b, segment_ids_b):
+    def next_batch(self, input_ids_a, input_masks_a, segment_ids_a,
+                   input_ids_b, input_masks_b, segment_ids_b):
         """
         生成batch数据
         :param input_ids_a:
@@ -286,13 +296,13 @@ class TrainData(object):
         for i in range(num_batches):
             start = i * self._batch_size
             end = start + self._batch_size
-            batch_input_ids_a = input_ids_a[start: end]
-            batch_input_masks_a = input_masks_a[start: end]
-            batch_segment_ids_a = segment_ids_a[start: end]
+            batch_input_ids_a = input_ids_a[start:end]
+            batch_input_masks_a = input_masks_a[start:end]
+            batch_segment_ids_a = segment_ids_a[start:end]
 
-            batch_input_ids_b = input_ids_b[start: end]
-            batch_input_masks_b = input_masks_b[start: end]
-            batch_segment_ids_b = segment_ids_b[start: end]
+            batch_input_ids_b = input_ids_b[start:end]
+            batch_input_masks_b = input_masks_b[start:end]
+            batch_segment_ids_b = segment_ids_b[start:end]
 
             yield dict(input_ids_a=batch_input_ids_a,
                        input_masks_a=batch_input_masks_a,

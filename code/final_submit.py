@@ -31,6 +31,7 @@ class Submiting(object):
 
     def load_data(self):
         data_obj = TrainData(self.config)
+        # ! 此处会生成用于预测的的文件，会很慢（硬编码了num_sample）
         if not os.path.isfile(self.__output_path + 'test_data.json'):
             data_obj.gen_predict_data()
         return data_obj
@@ -39,6 +40,7 @@ class Submiting(object):
     def gen_top10_urls(buffer):
         """
         @param buffer: [(score, url)]
+        :return : str contains 10 url
         """
         buffer = sorted(buffer, key=lambda item: item[0], reverse=True)
         buffer = buffer[:10]
@@ -46,6 +48,10 @@ class Submiting(object):
         return '\x01'.join(buffer)
 
     def get_origin_file(self, output_path):
+        '''
+        调用predictor进行预测，根据对应的给分取top10后储存
+        @param output_path: 目标文件的地址
+        '''
         queries = self.data_obj.load_predict_data()
         cnt = 0
         list_buffer = []
@@ -60,9 +66,10 @@ class Submiting(object):
             start = cnt * self._batch_size
             end = start + self._batch_size
 
+            # queries形式为 [query, pos_sample, qid\x01url]
             urls = [item[-1].split('\x01')[-1] for item in queries[start:end]]
             query_list = [item[0] for item in queries[start:end]]
-            for idx in range(len(query_list)):
+            for idx in range(len(query_list)):  # 判断是否为同一个query
                 if last_query is None:
                     last_query = query_list[idx]
                 elif last_query != query_list[idx]:

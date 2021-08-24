@@ -120,7 +120,7 @@ class Predictor(object):
                 current_step += 1
                 # print(similarity)
                 # print(predict)
-                yield predict
+                yield predict  # 在final_submit 中作为generator调用
 
 
 # python predictor.py --config_path=test_config.json
